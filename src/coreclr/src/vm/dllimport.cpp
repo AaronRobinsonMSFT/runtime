@@ -7450,26 +7450,17 @@ PCODE GetILStubForCalli(VASigCookie *pVASigCookie, MethodDesc *pMD)
         }
     }
 
-    mdMethodDef md;
-    CorNativeLinkFlags nlFlags;
-    CorNativeLinkType  nlType;
+    StubSigDesc sigDesc(pMD, signature, pVASigCookie->pModule);
+
+    CorNativeLinkFlags nlFlags = nlfNone;
+    CorNativeLinkType  nlType = nltAnsi;
 
     if (pMD != NULL)
     {
         PInvokeStaticSigInfo sigInfo(pMD);
-
-        md = pMD->GetMemberDef();
         nlFlags = sigInfo.GetLinkFlags();
         nlType  = sigInfo.GetCharSet();
     }
-    else
-    {
-        md = mdMethodDefNil;
-        nlFlags = nlfNone;
-        nlType  = nltAnsi;
-    }
-
-    StubSigDesc sigDesc(pMD, signature, pVASigCookie->pModule);
 
     MethodDesc* pStubMD = NDirect::CreateCLRToNativeILStub(&sigDesc,
                                     nlType,

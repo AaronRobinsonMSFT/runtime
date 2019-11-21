@@ -13274,6 +13274,138 @@ PTR_VOID ReflectionModule::GetRvaField(RVA field, BOOL fZapped) // virtual
 
 #ifndef DACCESS_COMPILE
 
+namespace
+{
+    // Forward declaration
+    HRESULT IsFunctionSignatureGenericTypeFree(_In_ SigPointer& sigPointer);
+
+    // Check if the signature contains a generic type
+    HRESULT HasNoGenericTypes(_In_ SigPointer &sigPointer)
+    {
+        HRESULT hr;
+
+        CorElementType typ;
+        IfFailRet(sigPointer.GetElemType(&typ));
+
+        if (CorIsPrimitiveType(typ))
+            return S_OK;
+
+        switch ((DWORD)typ)
+        {
+        default:
+            return META_E_BAD_SIGNATURE;
+
+        case ELEMENT_TYPE_VAR:
+        case ELEMENT_TYPE_MVAR:
+        case ELEMENT_TYPE_GENERICINST:
+            return S_FALSE;
+
+        case ELEMENT_TYPE_VAR_ZAPSIG:
+            IfFailRet(sigPointer.GetData(NULL));
+            break;
+
+        case ELEMENT_TYPE_OBJECT:
+        case ELEMENT_TYPE_STRING:
+        case ELEMENT_TYPE_TYPEDBYREF:
+        case ELEMENT_TYPE_CANON_ZAPSIG:
+            break;
+
+        case ELEMENT_TYPE_BYREF: //fallthru
+        case ELEMENT_TYPE_PTR:
+        case ELEMENT_TYPE_PINNED:
+        case ELEMENT_TYPE_SZARRAY:
+        case ELEMENT_TYPE_NATIVE_ARRAY_TEMPLATE_ZAPSIG:
+        case ELEMENT_TYPE_NATIVE_VALUETYPE_ZAPSIG:
+            return HasNoGenericTypes(sigPointer);   // Process referenced type
+
+        case ELEMENT_TYPE_VALUETYPE: //fallthru
+        case ELEMENT_TYPE_CLASS:
+            IfFailRet(sigPointer.GetToken(NULL));   // Skip RID
+            break;
+
+        case ELEMENT_TYPE_MODULE_ZAPSIG:
+            IfFailRet(sigPointer.GetData(NULL));    // Skip index
+            return HasNoGenericTypes(sigPointer);   // Process type
+            break;
+
+        case ELEMENT_TYPE_FNPTR:
+            return IsFunctionSignatureGenericTypeFree(sigPointer);
+
+        case ELEMENT_TYPE_ARRAY:
+        {
+            hr = HasNoGenericTypes(sigPointer);
+            if (hr != S_OK)
+                return hr;
+
+            ULONG rank;
+            IfFailRet(sigPointer.GetData(&rank));  // Get rank
+            if (0 < rank)
+            {
+                ULONG nsizes;
+                IfFailRet(sigPointer.GetData(&nsizes));     // Get # of sizes
+                while (nsizes--)
+                {
+                    IfFailRet(sigPointer.GetData(NULL));    // Skip size
+                }
+
+                ULONG nlbounds;
+                IfFailRet(sigPointer.GetData(&nlbounds));   // Get # of lower bounds
+                while (nlbounds--)
+                {
+                    IfFailRet(sigPointer.GetData(NULL));    // Skip lower bounds
+                }
+            }
+        }
+        break;
+
+        case ELEMENT_TYPE_SENTINEL:
+            // Should be unreachable since GetElem strips it
+            break;
+
+        case ELEMENT_TYPE_INTERNAL:
+            IfFailRet(sigPointer.GetPointer(NULL));
+            break;
+        }
+
+        return S_OK;
+    }
+
+    // Check if the function signature contains a generic type
+    HRESULT IsFunctionSignatureGenericTypeFree(_In_ SigPointer& sigPointer)
+    {
+        HRESULT hr;
+
+        // Skip calling convention
+        ULONG callConv;
+        IfFailRet(sigPointer.GetCallingConvInfo(&callConv));
+
+        if ((callConv == IMAGE_CEE_CS_CALLCONV_FIELD)
+            || (callConv == IMAGE_CEE_CS_CALLCONV_LOCAL_SIG))
+        {
+            return META_E_BAD_SIGNATURE;
+        }
+
+        // Skip type parameter count
+        if (callConv & IMAGE_CEE_CS_CALLCONV_GENERIC)
+            return S_OK;
+
+        ULONG argCount;
+        IfFailRet(sigPointer.GetData(&argCount));
+
+        // Add one to account for the return element
+        ++argCount;
+
+        for (ULONG i = 0; i < argCount; ++i)
+        {
+            hr = HasNoGenericTypes(sigPointer);
+            if (hr != S_OK)
+                return hr;
+        }
+
+        return S_OK;
+    }
+}
+
 // ===========================================================================
 // VASigCookies
 // ===========================================================================
@@ -13281,7 +13413,7 @@ PTR_VOID ReflectionModule::GetRvaField(RVA field, BOOL fZapped) // virtual
 //==========================================================================
 // Enregisters a VASig.
 //==========================================================================
-VASigCookie *Module::GetVASigCookie(Signature vaSignature)
+VASigCookie *Module::GetVASigCookie(Signature vaSignature, _In_ SigTypeContext *typeContext)
 {
     CONTRACT(VASigCookie*)
     {
@@ -13293,6 +13425,34 @@ VASigCookie *Module::GetVASigCookie(Signature vaSignature)
         INJECT_FAULT(COMPlusThrowOM());
     }
     CONTRACT_END;
+
+    static SigTypeContext DefaultSigTypeContext;
+    if (typeContext == nullptr)
+        typeContext = &DefaultSigTypeContext;
+
+    {
+        SigPointer sigPointer = vaSignature.CreateSigPointer();
+
+        // Detect if signature has generic types
+        HRESULT hr = IsFunctionSignatureGenericTypeFree(sigPointer);
+        _ASSERTE(SUCCEEDED(hr));
+        if (hr == S_FALSE)
+        {
+            // The act of walking the signature has invalidated the pointer, create a new one.
+            sigPointer = vaSignature.CreateSigPointer();
+
+            SigBuilder sigBuilder;
+            sigPointer.ConvertToInternalSignature(this, typeContext, &sigBuilder, /* bSkipCustomModifier = */ FALSE);
+
+            DWORD cbSig;
+            PVOID pSig = sigBuilder.GetSignature(&cbSig);
+
+            void* sigBuffer = GetLoaderAllocator()->GetLowFrequencyHeap()->AllocMem((S_SIZE_T)cbSig);
+            ::memcpy(sigBuffer, pSig, cbSig);
+
+            vaSignature = Signature((PCCOR_SIGNATURE)sigBuffer, cbSig);
+        }
+    }
 
     VASigCookieBlock *pBlock;
     VASigCookie      *pCookie;
@@ -13319,13 +13479,7 @@ VASigCookie *Module::GetVASigCookie(Signature vaSignature)
 
         // Compute the size of args first, outside of the lock.
 
-        // @TODO GENERICS: We may be calling a varargs method from a
-        // generic type/method. Using an empty context will make such a
-        // case cause an unexpected exception. To make this work,
-        // we need to create a specialized signature for every instantiation
-        SigTypeContext typeContext;
-
-        MetaSig metasig(vaSignature, this, &typeContext);
+        MetaSig metasig(vaSignature, this, &DefaultSigTypeContext);
         ArgIterator argit(&metasig);
 
         // Upper estimate of the vararg size

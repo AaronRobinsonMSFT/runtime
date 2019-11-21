@@ -6493,7 +6493,10 @@ CORINFO_VARARGS_HANDLE CEEInfo::getVarArgsHandle(CORINFO_SIG_INFO *sig,
 
     Module* module = GetModule(sig->scope);
 
-    result = CORINFO_VARARGS_HANDLE(module->GetVASigCookie(Signature(sig->pSig, sig->cbSig)));
+    SigTypeContext typeContext;
+    GetTypeContext(&sig->sigInst, &typeContext);
+
+    result = CORINFO_VARARGS_HANDLE(module->GetVASigCookie(Signature(sig->pSig, sig->cbSig), &typeContext));
 
     EE_TO_JIT_TRANSITION();
 
@@ -13592,7 +13595,7 @@ BOOL LoadDynamicInfoEntry(Module *currentModule,
         }
         {
         VarArgs:
-            result = (size_t) CORINFO_VARARGS_HANDLE(currentModule->GetVASigCookie(Signature(pSig, cSig)));
+            result = (size_t) CORINFO_VARARGS_HANDLE(currentModule->GetVASigCookie(Signature(pSig, cSig), nullptr));
         }
         break;
 

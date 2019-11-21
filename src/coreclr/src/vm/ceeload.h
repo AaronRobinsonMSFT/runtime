@@ -2551,7 +2551,7 @@ public:
     void NotifyEtwLoadFinished(HRESULT hr);
 
     // Enregisters a VASig.
-    VASigCookie *GetVASigCookie(Signature vaSignature);
+    VASigCookie *GetVASigCookie(Signature vaSignature, _In_ SigTypeContext *typeContext);
 
     // DLL entry point
     MethodDesc *GetDllEntryPoint()
