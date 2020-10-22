@@ -10,9 +10,9 @@ namespace System.Runtime.InteropServices
     /// </summary>
     /// <remarks>
     /// Methods marked with this attribute have the following restrictions:
-    ///   * Method must be marked "static".
+    ///   * Method must be marked `static`.
     ///   * Must not be called from managed code.
-    ///   * Must only have <see href="https://docs.microsoft.com/dotnet/framework/interop/blittable-and-non-blittable-types">blittable</see> arguments.
+    ///   * Must only have [blittable](https://docs.microsoft.com/dotnet/framework/interop/blittable-and-non-blittable-types) arguments.
     /// </remarks>
     [AttributeUsage(AttributeTargets.Method, Inherited = false)]
     public sealed class UnmanagedCallersOnlyAttribute : Attribute
@@ -27,6 +27,11 @@ namespace System.Runtime.InteropServices
         /// <remarks>
         /// Supplied types must be from the official "System.Runtime.CompilerServices" namespace and
         /// be of the form "CallConvXXX".
+        ///
+        /// The "default platform" calling convention is well defined for all supported platforms except
+        /// for x86 based platforms. The x86 defaults are as follows:
+        ///   * Windows - [stdcall](https://docs.microsoft.com/cpp/cpp/stdcall)
+        ///   * Non-Windows - [cdecl](https://docs.microsoft.com/cpp/cpp/cdecl)
         /// </remarks>
         public Type[]? CallConvs;
 
