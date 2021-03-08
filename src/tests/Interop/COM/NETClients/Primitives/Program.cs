@@ -58,12 +58,11 @@ Testing COM object lifetime control methods.
 
         private static void ForceGC()
         {
-            GC.Collect();
-            GC.Collect();
-            GC.Collect();
-            GC.Collect();
-            GC.Collect();
-            GC.WaitForPendingFinalizers();
+            for (int i = 0; i < 3; ++i)
+            {
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+            }
         }
 
         private static void RunTests()
