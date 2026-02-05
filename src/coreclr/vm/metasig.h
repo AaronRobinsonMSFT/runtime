@@ -368,6 +368,7 @@ DEFINE_METASIG_T(IM(RuntimeTypeHandle_RefBool_RefIntPtr_RetVoid, g(RT_TYPE_HANDL
 
 #endif
 
+DEFINE_METASIG_T(SM(RuntimeTypeHandle_RuntimeMethodHandle_RetVoid, g(RT_TYPE_HANDLE) g(METHOD_HANDLE), v))
 
 DEFINE_METASIG(SM(Str_RetInt, s, i))
 DEFINE_METASIG_T(SM(Str_RetICustomMarshaler, s, C(ICUSTOM_MARSHALER)))

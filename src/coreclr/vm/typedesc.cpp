@@ -751,8 +751,7 @@ TypeHandle* TypeVarTypeDesc::GetConstraints(DWORD *pNumConstraints, ClassLoadLev
     return m_constraints;
 }
 
-
-void TypeVarTypeDesc::LoadConstraints(ClassLoadLevel level, WhichConstraintsToLoad which)
+int TypeVarTypeDesc::LoadConstraints(ClassLoadLevel level, WhichConstraintsToLoad which)
 {
     CONTRACTL
     {
@@ -820,7 +819,7 @@ void TypeVarTypeDesc::LoadConstraints(ClassLoadLevel level, WhichConstraintsToLo
             if (!GetModule()->m_pTypeGenericInfoMap->HasConstraints(defToken, &foundResult) && foundResult)
             {
                 m_numConstraintsWithFlags = 0;
-                return;
+                return m_numConstraintsWithFlags;
             }
 
             TypeHandle genericType = LoadOwnerType();
@@ -839,7 +838,7 @@ void TypeVarTypeDesc::LoadConstraints(ClassLoadLevel level, WhichConstraintsToLo
             // If there is a single class constraint we place it at index 0 of the array
             AllocMemHolder<TypeHandle> constraintAlloc;
             TypeHandle *constraints;
-            
+
             if (whichCurrent == WhichConstraintsToLoad::None)
             {
                 constraintAlloc = (pAllocator->GetLowFrequencyHeap()->AllocMem(S_SIZE_T(numConstraints & ~WhichConstraintsLoadedMask) * S_SIZE_T(sizeof(TypeHandle))));
@@ -862,7 +861,7 @@ void TypeVarTypeDesc::LoadConstraints(ClassLoadLevel level, WhichConstraintsToLo
                 }
                 _ASSERTE(tkParam == GetToken());
                 TypeHandle thConstraint;
-                
+
                 bool loadConstraint;
                 if (TypeFromToken(tkConstraintType) == mdtTypeSpec && which != WhichConstraintsToLoad::All)
                 {
@@ -889,7 +888,7 @@ void TypeVarTypeDesc::LoadConstraints(ClassLoadLevel level, WhichConstraintsToLo
                         {
                             // We don't know if its a class or interface, but it isn't generic, so finding out is the same as loading
                             // it, so just allow the load to occur.
-                            loadConstraint = true; 
+                            loadConstraint = true;
                         }
                         else
                         {
@@ -897,7 +896,7 @@ void TypeVarTypeDesc::LoadConstraints(ClassLoadLevel level, WhichConstraintsToLo
                             _ASSERTE(elemType == ELEMENT_TYPE_CLASS
                                 || elemType == ELEMENT_TYPE_VALUETYPE);
                             mdToken tkInvestigate;
-                                
+
                             IfFailThrow(investigatePtr.GetToken(&tkInvestigate));
 
                             TypeHandle thUninstantiated = ClassLoader::LoadTypeDefOrRefOrSpecThrowing(GetModule(), tkInvestigate,
@@ -922,7 +921,7 @@ void TypeVarTypeDesc::LoadConstraints(ClassLoadLevel level, WhichConstraintsToLo
                 {
                     loadConstraint = true;
                 }
-                
+
                 if (loadConstraint)
                 {
                     thConstraint = ClassLoader::LoadTypeDefOrRefOrSpecThrowing(GetModule(), tkConstraintType,
@@ -994,13 +993,17 @@ void TypeVarTypeDesc::LoadConstraints(ClassLoadLevel level, WhichConstraintsToLo
         break;
     } while (true);
 
-    for (DWORD i = 0; i < (numConstraints & ~WhichConstraintsLoadedMask); i++)
+    // Mask out WhichConstraintsLoaded bits to get the actual number of constraints
+    numConstraints = numConstraints & ~WhichConstraintsLoadedMask;
+    for (DWORD i = 0; i < numConstraints; i++)
     {
         TypeHandle constraint = m_constraints[i];
         if (constraint.IsNull())
             continue;
         ClassLoader::EnsureLoaded(constraint, level);
     }
+
+    return numConstraints;
 }
 
 BOOL TypeVarTypeDesc::ConstrainedAsObjRef()

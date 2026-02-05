@@ -87,6 +87,7 @@ namespace
             , TargetTypeSig{}
             , TargetType{}
             , IsTargetStatic{ false }
+            , ValidateConstraintsAtRuntime{ false }
             , TargetMethod{}
             , TargetField{}
         { }
@@ -101,6 +102,7 @@ namespace
         SigPointer TargetTypeSig;
         TypeHandle TargetType;
         bool IsTargetStatic;
+        bool ValidateConstraintsAtRuntime;
         MethodDesc* TargetMethod;
         FieldDesc* TargetField;
     };
@@ -517,7 +519,11 @@ namespace
         return true;
     }
 
-    void VerifyDeclarationSatisfiesTargetConstraints(MethodDesc* declaration, MethodTable* targetType, MethodDesc* targetMethod)
+    // There are three potential states for this function.
+    // Return "true", constraints were verified.
+    // Return "false", constraint verification should be performed at run-time.
+    // Throws exception, the constraints were defined on both target and declaration and verification failed.
+    bool VerifyDeclarationSatisfiesTargetConstraints(MethodDesc* declaration, MethodTable* targetType, MethodDesc* targetMethod)
     {
         STANDARD_VM_CONTRACT;
         _ASSERTE(declaration != NULL);
@@ -526,7 +532,7 @@ namespace
 
         // If the target method has no generic parameters there is nothing to verify
         if (!targetMethod->HasClassOrMethodInstantiation())
-            return;
+            return true;
 
         // Construct a context for verifying target's constraints are
         // satisfied by the declaration.
@@ -562,7 +568,15 @@ namespace
             TypeHandle arg = declClassInst[i];
             TypeVarTypeDesc* param = targetClassInst[i].AsGenericVariable();
             if (!param->SatisfiesConstraints(&typeContext, arg, &instContext))
+            {
+                // If the declaration type variable has no constraints, but the target
+                // does, we'll make the check at run-time.
+                int contraintCount = arg.AsGenericVariable()->LoadConstraints(CLASS_LOADED, WhichConstraintsToLoad::All);
+                if (contraintCount == 0 && param->LoadConstraints(CLASS_LOADED, WhichConstraintsToLoad::All) != 0)
+                    return false;
+
                 COMPlusThrow(kInvalidProgramException, W("Argument_GenTypeConstraintsNotEqual"));
+            }
         }
 
         //
@@ -577,8 +591,18 @@ namespace
             TypeHandle arg = declMethodInst[i];
             TypeVarTypeDesc* param = targetMethodInst[i].AsGenericVariable();
             if (!param->SatisfiesConstraints(&typeContext, arg, &instContext))
+            {
+                // If the declaration method variable has no constraints, but the target
+                // does, we'll make the check at run-time.
+                int contraintCount = arg.AsGenericVariable()->LoadConstraints(CLASS_LOADED, WhichConstraintsToLoad::All);
+                if (contraintCount == 0 && param->LoadConstraints(CLASS_LOADED, WhichConstraintsToLoad::All) != 0)
+                    return false;
+
                 COMPlusThrow(kInvalidProgramException, W("Argument_GenMethodConstraintsNotEqual"));
+            }
         }
+
+        return true;
     }
 
     bool TrySetTargetMethod(
@@ -638,7 +662,7 @@ namespace
         }
 
         if (targetMaybe != NULL)
-            VerifyDeclarationSatisfiesTargetConstraints(cxt.Declaration, pMT, targetMaybe);
+            cxt.ValidateConstraintsAtRuntime = !VerifyDeclarationSatisfiesTargetConstraints(cxt.Declaration, pMT, targetMaybe);
 
         cxt.TargetMethod = targetMaybe;
         return cxt.TargetMethod != NULL;
@@ -842,6 +866,34 @@ namespace
         }
     }
 
+    void EmitConstraintsCheck(GenerationContext& cxt, int memberToken, ILCodeStream* pDispatchCode)
+    {
+        STANDARD_VM_CONTRACT;
+        _ASSERTE(pDispatchCode != NULL);
+        _ASSERTE(cxt.TargetType.IsNull() || memberToken != mdTokenNil);
+
+        if (!cxt.ValidateConstraintsAtRuntime)
+            return;
+
+        LocalDesc typedHandle{ CoreLibBinder::GetClass(CLASS__TYPE_HANDLE) };
+        int tIdx = pDispatchCode->NewLocal(typedHandle);
+        LocalDesc methodHandle{ CoreLibBinder::GetClass(CLASS__METHOD_HANDLE) };
+        int mIdx = pDispatchCode->NewLocal(methodHandle);
+
+        // Get the RuntimeTypeHandle
+        int typeToken = pDispatchCode->GetToken(cxt.TargetType);
+        pDispatchCode->EmitLDTOKEN(typeToken);
+        pDispatchCode->EmitSTLOC(tIdx);
+
+        // Get the RuntimeMethodHandle
+        pDispatchCode->EmitLDTOKEN(memberToken);
+        pDispatchCode->EmitSTLOC(mIdx);
+
+        pDispatchCode->EmitLDLOC(tIdx);
+        pDispatchCode->EmitLDLOC(mIdx);
+        pDispatchCode->EmitCALL(METHOD__UNSAFEACCESSORHELPERS__VERIFY_CONSTRAINTS_AT_RUNTIME, 2, 0);
+    }
+
     void GenerateAccessor(
         GenerationContext& cxt,
         DynamicResolver** resolver,
@@ -960,6 +1012,8 @@ namespace
                     _ASSERTE(TypeFromToken(target) == mdtMethodSpec);
                 }
             }
+
+            EmitConstraintsCheck(cxt, target, pDispatchCode);
 
             if (cxt.Kind == UnsafeAccessorKind::StaticMethod)
             {
@@ -1169,6 +1223,11 @@ bool MethodDesc::TryGenerateUnsafeAccessor(DynamicResolver** resolver, COR_ILMET
 
     // Generate the IL for the accessor.
     GenerateAccessor(context, resolver, methodILDecoder);
+
+    // Only set if we successfully generated the accessor.
+    if (context.ValidateConstraintsAtRuntime)
+        InterlockedUpdateFlags4(enum_flag4_UnsafeAccessorRuntimeValidation, TRUE);
+
     return true;
 }
 

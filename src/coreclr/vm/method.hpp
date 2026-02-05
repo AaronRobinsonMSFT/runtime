@@ -1842,6 +1842,7 @@ protected:
         enum_flag4_RequiresStableEntryPoint                 = 0x02,
         enum_flag4_TemporaryEntryPointAssigned              = 0x04,
         enum_flag4_EnCAddedMethod                           = 0x08,
+        enum_flag4_UnsafeAccessorRuntimeValidation                     = 0x10,
     };
 
     void InterlockedSetFlags4(BYTE mask, BYTE newValue);
@@ -2058,6 +2059,12 @@ public:
         return FALSE;
     }
 #endif // !FEATURE_METADATA_UPDATER
+
+    inline BOOL RequiresUnsafeAccessorRuntimeValidation()
+    {
+        LIMITED_METHOD_DAC_CONTRACT;
+        return (VolatileLoad(&m_bFlags4) & enum_flag4_UnsafeAccessorRuntimeValidation) != 0;
+    }
 
     inline BOOL IsIntrinsic()
     {

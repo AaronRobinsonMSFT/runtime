@@ -373,7 +373,7 @@ public:
     TypeHandle* GetConstraints(DWORD *pNumConstraints, ClassLoadLevel level, WhichConstraintsToLoad which);
 
     // Load the constraints if not already loaded
-    void LoadConstraints(ClassLoadLevel level, WhichConstraintsToLoad which);
+    int LoadConstraints(ClassLoadLevel level, WhichConstraintsToLoad which);
 
     // Check the constraints on this type parameter hold in the supplied context for the supplied type
     BOOL SatisfiesConstraints(SigTypeContext *pTypeContext, TypeHandle thArg,
