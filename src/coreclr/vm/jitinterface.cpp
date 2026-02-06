@@ -181,10 +181,11 @@ static BOOL ModifyCheckForDynamicMethod(DynamicResolver *pResolver,
     return doAccessCheck;
 }
 
-TransientMethodDetails::TransientMethodDetails(MethodDesc* pMD, _In_opt_ COR_ILMETHOD_DECODER* header, CORINFO_MODULE_HANDLE scope)
+TransientMethodDetails::TransientMethodDetails(MethodDesc* pMD, _In_opt_ COR_ILMETHOD_DECODER* header, CORINFO_MODULE_HANDLE scope, TransientMethodContext* context)
     : Method{ pMD }
     , Header{ header }
     , Scope{ scope }
+    , Context{ context }
 {
     LIMITED_METHOD_CONTRACT;
     _ASSERTE(Method != NULL);
@@ -214,6 +215,8 @@ TransientMethodDetails::~TransientMethodDetails()
         resolver->FreeCompileTimeState();
         delete resolver;
     }
+
+    delete Context;
 }
 
 TransientMethodDetails& TransientMethodDetails::operator=(TransientMethodDetails&& other)
@@ -224,9 +227,11 @@ TransientMethodDetails& TransientMethodDetails::operator=(TransientMethodDetails
         Method = other.Method;
         Header = other.Header;
         Scope = other.Scope;
+        Context = other.Context;
         other.Method = NULL;
         other.Header = NULL;
         other.Scope = NULL;
+        other.Context = NULL;
     }
     return *this;
 }
@@ -6629,11 +6634,13 @@ public:
     MethodDesc* Method;
     COR_ILMETHOD_DECODER* Header;
     DynamicResolver* TransientResolver;
+    TransientMethodContext* TransientContext;
 
     MethodInfoWorkerContext(MethodDesc* pMD, _In_opt_ COR_ILMETHOD_DECODER* header = NULL)
         : Method{ pMD }
         , Header{ header }
         , TransientResolver{}
+        , TransientContext{}
     {
         LIMITED_METHOD_CONTRACT;
         _ASSERTE(pMD != NULL);
@@ -6646,6 +6653,7 @@ public:
     {
         STANDARD_VM_CONTRACT;
         delete TransientResolver;
+        delete TransientContext;
     }
 
     MethodInfoWorkerContext& operator=(const MethodInfoWorkerContext&) = delete;
@@ -6672,8 +6680,14 @@ public:
         _ASSERTE(HasTransientMethodDetails());
 
         CORINFO_MODULE_HANDLE handle = CreateScopeHandle();
+
+        // Creating the ScopeHandle transfers the TransientResolver
+        // to the CORINFO_MODULE_HANDLE, so it can be nulled after.
         TransientResolver = NULL;
-        return TransientMethodDetails{ Method, Header, handle };
+
+        TransientMethodContext* tmp = NULL;
+        std::swap(tmp, TransientContext);
+        return TransientMethodDetails{ Method, Header, handle, tmp };
     }
 
     void UpdateWith(const TransientMethodDetails& details)
@@ -7578,7 +7592,7 @@ COR_ILMETHOD_DECODER* CEEInfo::getMethodInfoWorker(
         methInfo->EHcount = (unsigned short)EHCount;
         localSig = pResolver->GetLocalSig();
     }
-    else if (ftn->TryGenerateTransientILImplementation(&cxt.TransientResolver, &cxt.Header))
+    else if (ftn->TryGenerateTransientILImplementation(&cxt.TransientResolver, &cxt.Header, &cxt.TransientContext))
     {
         scopeHnd = cxt.CreateScopeHandle();
 
@@ -7819,14 +7833,13 @@ CorInfoInline CEEInfo::canInline (CORINFO_METHOD_HANDLE hCaller,
     MethodDesc* pCaller = GetMethod(hCaller);
     MethodDesc* pCallee = GetMethod(hCallee);
 
-    // We're compiling an UnsafeAccessor method. We need to determine
-    // if we should disallow inlining. UnsafeAccessor methods have special
-    // runtime validation that can be enabled. If they are enabled,
-    // we disable inlining.
-    if (pCaller->RequiresUnsafeAccessorRuntimeValidation())
+    // The caller is a transient method. See if the callee is allowed to be inlined.
+    TransientMethodDetails* detailsMaybe = NULL;
+    if (FindTransientMethodDetails(pCaller, &detailsMaybe)
+        && !pCaller->CanUnsafeAccessorInlineCallee(detailsMaybe->Context, pCallee))
     {
         result = INLINE_FAIL;
-        szFailReason = "Caller performs runtime validation";
+        szFailReason = "Caller performs runtime validation on callee";
         goto exit;
     }
 

@@ -869,11 +869,9 @@ namespace
     void EmitConstraintsCheck(GenerationContext& cxt, int memberToken, ILCodeStream* pDispatchCode)
     {
         STANDARD_VM_CONTRACT;
+        _ASSERTE(cxt.ValidateConstraintsAtRuntime);
+        _ASSERTE(!cxt.TargetType.IsNull() && memberToken != mdTokenNil);
         _ASSERTE(pDispatchCode != NULL);
-        _ASSERTE(cxt.TargetType.IsNull() || memberToken != mdTokenNil);
-
-        if (!cxt.ValidateConstraintsAtRuntime)
-            return;
 
         LocalDesc typedHandle{ CoreLibBinder::GetClass(CLASS__TYPE_HANDLE) };
         int tIdx = pDispatchCode->NewLocal(typedHandle);
@@ -894,10 +892,24 @@ namespace
         pDispatchCode->EmitCALL(METHOD__UNSAFEACCESSORHELPERS__VERIFY_CONSTRAINTS_AT_RUNTIME, 2, 0);
     }
 
+    class UnsafeAccessorTransientMethodContext final : public TransientMethodContext
+    {
+    public:
+        UnsafeAccessorTransientMethodContext(bool validateConstraintsAtRuntime, MethodDesc* targetMethod)
+            : TransientMethodContext{ TransientMethodContextKind::UnsafeAccessor }
+            , ValidateConstraintsAtRuntime{ validateConstraintsAtRuntime }
+            , TargetMethod{ targetMethod }
+        { }
+
+        bool ValidateConstraintsAtRuntime;
+        MethodDesc* TargetMethod;
+    };
+
     void GenerateAccessor(
         GenerationContext& cxt,
         DynamicResolver** resolver,
-        COR_ILMETHOD_DECODER** methodILDecoder)
+        COR_ILMETHOD_DECODER** methodILDecoder,
+        TransientMethodContext** transientContext)
     {
         STANDARD_VM_CONTRACT;
 
@@ -995,10 +1007,12 @@ namespace
                 cxt.TargetTypeSig.GetSignature(&sig, &sigLen);
                 mdToken targetTypeSigToken = pDispatchCode->GetSigToken(sig, sigLen);
 
+                MethodDesc* resolveTargetMethod;
                 if (methodSpecSigToken == mdTokenNil)
                 {
                     // Create a MemberRef
-                    target = pDispatchCode->GetToken(cxt.TargetMethod, targetTypeSigToken);
+                    resolveTargetMethod = cxt.TargetMethod;
+                    target = pDispatchCode->GetToken(resolveTargetMethod, targetTypeSigToken);
                     _ASSERTE(TypeFromToken(target) == mdtMemberRef);
                 }
                 else
@@ -1008,12 +1022,21 @@ namespace
                     MethodDesc* instantiatedTarget = MethodDesc::FindOrCreateAssociatedMethodDesc(cxt.TargetMethod, cxt.TargetType.GetMethodTable(), FALSE, methodInst, FALSE);
 
                     // Create a MethodSpec
-                    target = pDispatchCode->GetToken(instantiatedTarget, targetTypeSigToken, methodSpecSigToken);
+                    resolveTargetMethod = instantiatedTarget;
+                    target = pDispatchCode->GetToken(resolveTargetMethod, targetTypeSigToken, methodSpecSigToken);
                     _ASSERTE(TypeFromToken(target) == mdtMethodSpec);
                 }
-            }
 
-            EmitConstraintsCheck(cxt, target, pDispatchCode);
+                // Check if constraints need to be validated at runtime.
+                // We only need to validate constraints if the target has shared generics.
+                if (cxt.ValidateConstraintsAtRuntime
+                    && (resolveTargetMethod->IsSharedByGenericInstantiations()
+                        || resolveTargetMethod->IsInstantiatingStub()))
+                {
+                    EmitConstraintsCheck(cxt, target, pDispatchCode);
+                    *transientContext = new UnsafeAccessorTransientMethodContext{ true, resolveTargetMethod };
+                }
+            }
 
             if (cxt.Kind == UnsafeAccessorKind::StaticMethod)
             {
@@ -1078,12 +1101,35 @@ namespace
     }
 }
 
-bool MethodDesc::TryGenerateUnsafeAccessor(DynamicResolver** resolver, COR_ILMETHOD_DECODER** methodILDecoder)
+bool MethodDesc::CanUnsafeAccessorInlineCallee(TransientMethodContext* context, MethodDesc* callee)
+{
+    STANDARD_VM_CONTRACT;
+    _ASSERTE(callee != NULL);
+
+    if (context == NULL
+        || context->Kind != TransientMethodContextKind::UnsafeAccessor)
+    {
+        return true;
+    }
+
+    UnsafeAccessorTransientMethodContext* cxt = static_cast<UnsafeAccessorTransientMethodContext*>(context);
+    if (!cxt->ValidateConstraintsAtRuntime)
+        return true;
+
+    MethodDesc* typicalCallee = callee->LoadTypicalMethodDefinition();
+    MethodDesc* typicalTargetMethod = cxt->TargetMethod->LoadTypicalMethodDefinition();
+
+    // The target method for an UnsafeAccessor should not be inlined.
+    return typicalTargetMethod != typicalCallee;
+}
+
+bool MethodDesc::TryGenerateUnsafeAccessor(DynamicResolver** resolver, COR_ILMETHOD_DECODER** methodILDecoder, TransientMethodContext** transientContext)
 {
     STANDARD_VM_CONTRACT;
     _ASSERTE(resolver != NULL);
     _ASSERTE(methodILDecoder != NULL);
     _ASSERTE(*resolver == NULL && *methodILDecoder == NULL);
+    _ASSERTE(transientContext != NULL);
     _ASSERTE(IsIL());
     _ASSERTE(!HasILHeader());
 
@@ -1222,12 +1268,7 @@ bool MethodDesc::TryGenerateUnsafeAccessor(DynamicResolver** resolver, COR_ILMET
     }
 
     // Generate the IL for the accessor.
-    GenerateAccessor(context, resolver, methodILDecoder);
-
-    // Only set if we successfully generated the accessor.
-    if (context.ValidateConstraintsAtRuntime)
-        InterlockedUpdateFlags4(enum_flag4_UnsafeAccessorRuntimeValidation, TRUE);
-
+    GenerateAccessor(context, resolver, methodILDecoder, transientContext);
     return true;
 }
 

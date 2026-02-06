@@ -1054,7 +1054,7 @@ PCODE MethodDesc::JitCompileCodeLocked(PrepareCodeConfig* pConfig, COR_ILMETHOD_
     return pCode;
 }
 
-bool MethodDesc::TryGenerateTransientILImplementation(DynamicResolver** resolver, COR_ILMETHOD_DECODER** methodILDecoder)
+bool MethodDesc::TryGenerateTransientILImplementation(DynamicResolver** resolver, COR_ILMETHOD_DECODER** methodILDecoder, TransientMethodContext** context)
 {
     STANDARD_VM_CONTRACT;
 
@@ -1066,7 +1066,7 @@ bool MethodDesc::TryGenerateTransientILImplementation(DynamicResolver** resolver
         return true;
     }
 
-    if (TryGenerateUnsafeAccessor(resolver, methodILDecoder))
+    if (TryGenerateUnsafeAccessor(resolver, methodILDecoder, context))
     {
         return true;
     }

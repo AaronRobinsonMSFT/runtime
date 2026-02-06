@@ -282,6 +282,24 @@ extern "C"
 /*********************************************************************/
 /*********************************************************************/
 
+enum class TransientMethodContextKind
+{
+    UnsafeAccessor
+};
+
+// Class used by the transient method to hold details.
+class TransientMethodContext
+{
+protected:
+    TransientMethodContext(TransientMethodContextKind kind)
+        : Kind{ kind }
+    { }
+
+public:
+    const TransientMethodContextKind Kind;
+    virtual ~TransientMethodContext() = default;
+};
+
 // Transient data for a MethodDesc involved
 // in the current JIT compilation.
 struct TransientMethodDetails final
@@ -289,9 +307,10 @@ struct TransientMethodDetails final
     MethodDesc* Method;
     COR_ILMETHOD_DECODER* Header;
     CORINFO_MODULE_HANDLE Scope;
+    TransientMethodContext* Context;
 
     TransientMethodDetails() = default;
-    TransientMethodDetails(MethodDesc* pMD, _In_opt_ COR_ILMETHOD_DECODER* header, CORINFO_MODULE_HANDLE scope);
+    TransientMethodDetails(MethodDesc* pMD, _In_opt_ COR_ILMETHOD_DECODER* header, CORINFO_MODULE_HANDLE scope, TransientMethodContext* context = NULL);
     TransientMethodDetails(const TransientMethodDetails&) = delete;
     TransientMethodDetails(TransientMethodDetails&&);
     ~TransientMethodDetails();
@@ -974,7 +993,7 @@ public:
     void SetDebugInfo(PTR_BYTE pDebugInfo) override;
 
     LPVOID GetCookieForInterpreterCalliSig(CORINFO_SIG_INFO* szMetaSig) override;
-    
+
     virtual CORINFO_METHOD_HANDLE getAsyncResumptionStub(void** entryPoint) override final;
 };
 #endif // FEATURE_INTERPRETER

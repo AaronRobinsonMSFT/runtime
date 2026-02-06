@@ -1842,7 +1842,6 @@ protected:
         enum_flag4_RequiresStableEntryPoint                 = 0x02,
         enum_flag4_TemporaryEntryPointAssigned              = 0x04,
         enum_flag4_EnCAddedMethod                           = 0x08,
-        enum_flag4_UnsafeAccessorRuntimeValidation                     = 0x10,
     };
 
     void InterlockedSetFlags4(BYTE mask, BYTE newValue);
@@ -2060,12 +2059,6 @@ public:
     }
 #endif // !FEATURE_METADATA_UPDATER
 
-    inline BOOL RequiresUnsafeAccessorRuntimeValidation()
-    {
-        LIMITED_METHOD_DAC_CONTRACT;
-        return (VolatileLoad(&m_bFlags4) & enum_flag4_UnsafeAccessorRuntimeValidation) != 0;
-    }
-
     inline BOOL IsIntrinsic()
     {
         LIMITED_METHOD_DAC_CONTRACT;
@@ -2188,7 +2181,7 @@ private:
     PCODE JitCompileCodeLocked(PrepareCodeConfig* pConfig, COR_ILMETHOD_DECODER* pilHeader, JitListLockEntry* pLockEntry, ULONG* pSizeOfCode, bool *pIsInterpreterCode);
 
     bool TryGenerateAsyncThunk(DynamicResolver** resolver, COR_ILMETHOD_DECODER** methodILDecoder);
-    bool TryGenerateUnsafeAccessor(DynamicResolver** resolver, COR_ILMETHOD_DECODER** methodILDecoder);
+    bool TryGenerateUnsafeAccessor(DynamicResolver** resolver, COR_ILMETHOD_DECODER** methodILDecoder, TransientMethodContext** context);
     void EmitTaskReturningThunk(MethodDesc* pAsyncCallVariant, MetaSig& thunkMsig, ILStubLinker* pSL);
     void EmitAsyncMethodThunk(MethodDesc* pTaskReturningVariant, MetaSig& msig, ILStubLinker* pSL);
     SigPointer GetAsyncThunkResultTypeSig();
@@ -2196,7 +2189,8 @@ private:
     int GetTokenForGenericTypeMethodCallWithAsyncReturnType(ILCodeStream* pCode, MethodDesc* md);
 public:
     static void CreateDerivedTargetSig(MetaSig& msig, SigBuilder* stubSigBuilder);
-    bool TryGenerateTransientILImplementation(DynamicResolver** resolver, COR_ILMETHOD_DECODER** methodILDecoder);
+    bool CanUnsafeAccessorInlineCallee(TransientMethodContext* context, MethodDesc* callee);
+    bool TryGenerateTransientILImplementation(DynamicResolver** resolver, COR_ILMETHOD_DECODER** methodILDecoder, TransientMethodContext** context);
     void GenerateFunctionPointerCall(DynamicResolver** resolver, COR_ILMETHOD_DECODER** methodILDecoder);
 #endif // DACCESS_COMPILE
 
