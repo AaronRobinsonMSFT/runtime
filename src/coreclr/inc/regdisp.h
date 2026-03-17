@@ -324,6 +324,13 @@ inline BOOL IsInCalleesFrames(REGDISPLAY *display, LPVOID stackPointer) {
     return stackPointer < (LPVOID)(display->SP);
 }
 
+inline TADDR GetRegdisplayStackMark(REGDISPLAY *display) {
+    LIMITED_METHOD_CONTRACT;
+    // ARM uses the establisher frame as the marker
+    _ASSERTE(display->IsCallerContextValid);
+    return GetSP(display->pCallerContext);
+}
+
 #else // none of the above processors
 #error "RegDisplay functions are not implemented on this platform."
 #endif

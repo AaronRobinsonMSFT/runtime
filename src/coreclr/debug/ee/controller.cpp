@@ -3524,7 +3524,7 @@ void DebuggerController::ApplyTraceFlag(Thread *thread)
     g_pEEInterface->MarkThreadForDebugStepping(thread, true);
     LOG((LF_CORDB,LL_INFO1000, "DC::ApplyTraceFlag marked thread for debug stepping\n"));
 
-    SetSSFlag(reinterpret_cast<DT_CONTEXT *>(context) ARM_ARG(thread) ARM64_ARG(thread) RISCV64_ARG(thread) LOONGARCH64_ARG(thread));
+    SetSSFlag(reinterpret_cast<DT_CONTEXT *>(context) ARM_ARG(thread) ARM64_ARG(thread) RISCV64_ARG(thread) LOONGARCH64_ARG(thread) WASM_ARG(thread));
 }
 
 //
@@ -3574,7 +3574,7 @@ void DebuggerController::UnapplyTraceFlag(Thread *thread)
 
     // Always need to unmark for stepping
     g_pEEInterface->MarkThreadForDebugStepping(thread, false);
-    UnsetSSFlag(reinterpret_cast<DT_CONTEXT *>(context) ARM_ARG(thread) ARM64_ARG(thread) RISCV64_ARG(thread) LOONGARCH64_ARG(thread));
+    UnsetSSFlag(reinterpret_cast<DT_CONTEXT *>(context) ARM_ARG(thread) ARM64_ARG(thread) RISCV64_ARG(thread) LOONGARCH64_ARG(thread) WASM_ARG(thread));
 }
 
 void DebuggerController::EnableExceptionHook()
@@ -5488,7 +5488,7 @@ InterpreterStepHelper::StepSetupResult InterpreterStepHelper::SetupStep(
                     LOG((LF_CORDB, LL_INFO10000, "ISH::SS: skipIP == nextIP, only one patch needed\n"));
                 }
                 else
-                {                
+                {
                     LOG((LF_CORDB, LL_INFO10000, "ISH::SS: No skip IP for conditional branch!\n"));
                     return SSR_Failed;
                 }
@@ -7840,7 +7840,7 @@ TP_RESULT DebuggerStepper::TriggerPatch(DebuggerControllerPatch *patch,
 
     // With the addition of Async Thunks, it is now possible that an unjitted method trace
     // represents a stub. We need to check for this case and follow the stub trace to find
-    // the real target. 
+    // the real target.
     // Replica patches do not contain a reference to the original trace so we can not rely
     // on the trace type == TRACE_UNJITTED_METHOD to identify this case.
     {
@@ -7878,7 +7878,7 @@ TP_RESULT DebuggerStepper::TriggerPatch(DebuggerControllerPatch *patch,
                     traceOk, traceOk ? trace.GetTraceType() : -1));
             }
 
-            if (traceOk && 
+            if (traceOk &&
                 g_pEEInterface->FollowTrace(&trace) &&
                 PatchTrace(&trace, info.m_activeFrame.fp,
                            (m_rgfMappingStop & STOP_UNMANAGED) ? true : false))

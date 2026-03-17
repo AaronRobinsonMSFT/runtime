@@ -139,6 +139,11 @@
 #define NOT_RISCV64_ARG(x)    , x
 #endif
 
+#ifdef TARGET_WASM
+#define WASM_FIRST_ARG(x)  x ,
+#define WASM_ARG(x)        , x
+#endif
+
 #ifdef TARGET_64BIT
 #define LOG2_PTRSIZE 3
 #else

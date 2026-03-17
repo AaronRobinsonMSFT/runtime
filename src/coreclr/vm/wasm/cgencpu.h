@@ -11,6 +11,7 @@
 
 // preferred alignment for data
 #define DATA_ALIGNMENT 4
+#define STACK_ALIGN_SIZE 4
 
 #define CODE_SIZE_ALIGN                         4
 #define LOG2SLOT                                LOG2_PTRSIZE

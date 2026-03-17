@@ -29,11 +29,60 @@ typedef DPTR(CORDB_ADDRESS_TYPE)    PTR_CORDB_ADDRESS_TYPE;
 #define CORDbg_BREAK_INSTRUCTION_SIZE 1
 #define CORDbg_BREAK_INSTRUCTION 0 // unreachable intruction
 
+// Enable single stepping.
+void SetSSFlag(DT_CONTEXT *pCtx, Thread *pThread);
+
+// Disable single stepping
+void UnsetSSFlag(DT_CONTEXT *pCtx, Thread *pThread);
+
+// Check if single stepping is enabled.
+bool IsSSFlagEnabled(DT_CONTEXT *pCtx, Thread *pThread);
+
+inline void InitializePRD(PRD_TYPE *p1)
+{
+    *p1 = 0;
+}
+
 inline bool PRDIsEmpty(PRD_TYPE p1)
 {
     LIMITED_METHOD_CONTRACT;
 
     return p1 == 0;
+}
+
+inline LPVOID CORDbgGetIP(DT_CONTEXT *context)
+{
+    LIMITED_METHOD_CONTRACT;
+    PORTABILITY_ASSERT("The function is not implemented on wasm");
+    return NULL;
+}
+
+inline void CORDbgSetInstruction(CORDB_ADDRESS_TYPE* address,
+                                 PRD_TYPE instruction)
+{
+    LIMITED_METHOD_DAC_CONTRACT;
+    PORTABILITY_ASSERT("The function is not implemented on wasm");
+}
+
+inline PRD_TYPE CORDbgGetInstruction(UNALIGNED CORDB_ADDRESS_TYPE* address)
+{
+    LIMITED_METHOD_CONTRACT;
+    PORTABILITY_ASSERT("The function is not implemented on wasm");
+    TADDR ptraddr = dac_cast<TADDR>(address);
+    return *(PRD_TYPE *)ptraddr;
+}
+
+inline bool AddressIsBreakpoint(CORDB_ADDRESS_TYPE* address)
+{
+    LIMITED_METHOD_CONTRACT;
+    PORTABILITY_ASSERT("The function is not implemented on wasm");
+    return false;
+}
+
+inline void CORDbgInsertBreakpoint(UNALIGNED CORDB_ADDRESS_TYPE *address)
+{
+    LIMITED_METHOD_CONTRACT;
+    PORTABILITY_ASSERT("The function is not implemented on wasm");
 }
 
 #endif

@@ -946,6 +946,7 @@ elseif(CLR_CMAKE_TARGET_ARCH_WASM)
         ${ARCH_SOURCES_DIR}/helpers.cpp
         ${ARCH_SOURCES_DIR}/callhelpers-interp-to-managed.cpp
         ${ARCH_SOURCES_DIR}/callhelpers-reverse.cpp
+        ${ARCH_SOURCES_DIR}/debuggerOnMessage.cpp
         exceptionhandling.cpp
         gcinfodecoder.cpp
     )

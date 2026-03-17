@@ -290,10 +290,7 @@ endif()
 
 add_subdirectory(vm)
 add_subdirectory(md)
-
-if (NOT CLR_CMAKE_TARGET_ARCH_WASM)
-  add_subdirectory(debug)
-endif()
+add_subdirectory(debug)
 
 add_subdirectory(binder)
 add_subdirectory(dlls)

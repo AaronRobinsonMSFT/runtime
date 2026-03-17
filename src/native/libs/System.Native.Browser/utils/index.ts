@@ -19,6 +19,7 @@ import { dotnetUpdateInternals, dotnetUpdateInternalsSubscriber } from "../utils
 import { initPolyfills } from "../utils/polyfills";
 import { registerRuntime } from "./runtime-list";
 import { registerCDAC } from "./cdac";
+import { registerDebugger } from "./debugger";
 import { abortBackgroundTimers, runBackgroundTimers } from "./scheduling";
 
 export function dotnetInitializeModule(internals: InternalExchange): void {
@@ -33,6 +34,7 @@ export function dotnetInitializeModule(internals: InternalExchange): void {
     initPolyfills();
     registerRuntime(runtimeApi);
     registerCDAC(runtimeApi);
+    registerDebugger(runtimeApi);
 
     if (!Array.isArray(internals)) throw new Error("Expected internals to be an array");
     const runtimeApiLocal: Partial<RuntimeAPI> = {
